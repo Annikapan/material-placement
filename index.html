@@ -657,34 +657,35 @@ function finishQuiz() {
   showScreen('result');
 }
 
-// ============ Webhook 提交 ============
+// ============ Webhook 提交（用 GET + URL 参数，兼容性最好）============
 function postResultsToWebhook(score, correctCount, wrongs) {
   if (!WEBHOOK_URL || WEBHOOK_URL === 'PASTE_YOUR_URL_HERE') return;
 
-  const payload = {
+  const params = new URLSearchParams({
     account: user.account,
     servicer: user.org,
     name: user.name,
     score: score,
     correct: correctCount,
     total: answers.length,
-    wrongQids: wrongs.map(a => a.qid),
-    wrongPicks: wrongs.map(a => a.qid + ':' + a.picked.join(',')),
-    userAgent: navigator.userAgent,
-    submittedAt: new Date().toISOString()
-  };
-
-  // text/plain 避开 CORS 预检（Apps Script 不支持 OPTIONS）
-  fetch(WEBHOOK_URL, {
-    method: 'POST',
-    mode: 'no-cors',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(payload),
-    keepalive: true
-  }).catch(err => {
-    // 静默失败，不影响答题体验
-    console.warn('webhook submit failed:', err);
+    wrongQids: wrongs.map(a => a.qid).join(','),
+    wrongPicks: wrongs.map(a => a.qid + ':' + a.picked.join(',')).join('|'),
+    userAgent: navigator.userAgent
   });
+
+  // 用 <img> 触发 GET 请求最稳，绕过所有 CORS 限制
+  const url = WEBHOOK_URL + '?' + params.toString();
+  const img = new Image();
+  img.referrerPolicy = 'no-referrer';
+  img.src = url;
+
+  // 备份方案：fetch 模式也发一次
+  try {
+    fetch(url, { method: 'GET', mode: 'no-cors', cache: 'no-cache', keepalive: true })
+      .catch(() => {});
+  } catch (e) {}
+
+  console.log('[webhook] submitted:', url);
 }
 
 function restart() {
