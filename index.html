@@ -153,6 +153,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic","M
 </div>
 
 <script>
+// ============ Webhook 配置 ============
+// 把下面 PASTE_YOUR_URL_HERE 替换成 Google Apps Script 部署后的 URL
+// 留空字符串则禁用 webhook（H5 仍可正常使用）
+const WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbwNYLEVWXikTrBK9N4RfdE8k4tes6PznoRFxuDbIKslIrZfAaSs47S04qDUPdF2kSGDNg/exec';
+
 // ============ 服务商账号配置 ============
 const ACCOUNTS = {
   'lian':            { pw: 'wp-lian-2026',            org: 'Lian' },
@@ -646,7 +651,40 @@ function finishQuiz() {
     }).join('');
   }
 
+  // 提交结果到 Webhook（如果配置了 URL）
+  postResultsToWebhook(score, correctCount, wrongs);
+
   showScreen('result');
+}
+
+// ============ Webhook 提交 ============
+function postResultsToWebhook(score, correctCount, wrongs) {
+  if (!WEBHOOK_URL || WEBHOOK_URL === 'PASTE_YOUR_URL_HERE') return;
+
+  const payload = {
+    account: user.account,
+    servicer: user.org,
+    name: user.name,
+    score: score,
+    correct: correctCount,
+    total: answers.length,
+    wrongQids: wrongs.map(a => a.qid),
+    wrongPicks: wrongs.map(a => a.qid + ':' + a.picked.join(',')),
+    userAgent: navigator.userAgent,
+    submittedAt: new Date().toISOString()
+  };
+
+  // text/plain 避开 CORS 预检（Apps Script 不支持 OPTIONS）
+  fetch(WEBHOOK_URL, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(payload),
+    keepalive: true
+  }).catch(err => {
+    // 静默失败，不影响答题体验
+    console.warn('webhook submit failed:', err);
+  });
 }
 
 function restart() {
